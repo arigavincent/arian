@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: arian_postgres
+    environment:
+      POSTGRES_DB: arian
+      POSTGRES_USER: arian
+      POSTGRES_PASSWORD: arian
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arian"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: ./api
+    container_name: arian_api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://arian:arian@postgres:5432/arian
+      PORT: 5000
+      ARIAN_GATEWAY_SECRET_B64: "76iRl07s0xSN9jqmEWAt79EBJZulIQIsV64FZr2O"
+      ARIAN_AUTHORIZATION_TOKEN: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjUyNjUzMzI5ODM2MDY2OTQxNTIsImV4cCI6MTc4MzgwMzE4MiwiaWF0IjoxNzc2MDI2ODgyfQ.r5VfgM_olW1OYsffeNFEaQWpDwz5E2uET1KOwagsJs0"
+    ports:
+      - "5000:5000"
+
+  enrichment:
+    build: ./services
+    container_name: arian_enrichment
+    command: python enrichment.py
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://arian:arian@postgres:5432/arian
+    restart: unless-stopped
+
+  collections:
+    build: ./services
+    container_name: arian_collections
+    command: python collections.py
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://arian:arian@postgres:5432/arian
+    restart: unless-stopped
+
+  discovery:
+    build: ./services
+    container_name: arian_discovery
+    command: python discovery.py --mode fast
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://arian:arian@postgres:5432/arian
+    profiles:
+      - discovery
+
+volumes:
+  postgres_data:
